@@ -3,19 +3,21 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
-import { MongooseModule } from '@nestjs/mongoose';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD, Reflector } from '@nestjs/core';
-import { RolesGuard } from './auth/guards/roles/roles.guard';
+import { RolesGuard } from './common/guards/roles.guard';
+import { MongodbModule } from './database/mongodb.module';
+import appConfig from './config/app.config';
+import databaseConfig from './config/database.config';
+import jwtConfig from './config/jwt.config';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      load: [appConfig, databaseConfig, jwtConfig],
     }),
-    MongooseModule.forRoot(
-      process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/auth_db',
-    ),
+    MongodbModule,
     UsersModule, AuthModule
   ],
   controllers: [AppController],

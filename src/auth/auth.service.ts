@@ -1,9 +1,9 @@
 import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
-import { RegisterDto } from '../dto/register.dto';
-import { LoginDto } from '../dto/login.dto';
+import { RegisterDto } from './dto/register.dto';
+import { LoginDto } from './dto/login.dto';
 import { UsersService } from '../users/users.service';
 import { User } from '../users/schemas/user.schema';
-import * as bcrypt from 'bcrypt';
+import { HashUtil } from '../utils/hash.util';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 
@@ -15,6 +15,7 @@ export interface AuthResponse {
     username: string;
     email: string;
     role: string;
+    provider: string;
   };
 }
 
@@ -26,14 +27,9 @@ export class AuthService {
     private readonly configService: ConfigService,
   ) { }
 
-  async hashPassword(password: string): Promise<string> {
-    const saltRounds = 10;
-    return bcrypt.hash(password, saltRounds);
-  }
-
   async validateUser(email: string, password: string): Promise<any> {
     const user = await this.usersService.findByEmail(email);
-    if (user && await bcrypt.compare(password, user.password)) {
+    if (user && user.password && await HashUtil.comparePassword(password, user.password)) {
       const { password, ...result } = user;
       return result;
     }
@@ -46,10 +42,11 @@ export class AuthService {
       throw new ConflictException('User with this email already exists');
     }
 
-    const hashedPassword = await this.hashPassword(registerDto.password);
+    const hashedPassword = await HashUtil.hashPassword(registerDto.password);
     const user = await this.usersService.create({
       ...registerDto,
       password: hashedPassword,
+      provider: 'local',
     });
 
     return {
@@ -75,11 +72,11 @@ export class AuthService {
 
     return {
       access_token: this.jwtService.sign(payload, {
-        secret: this.configService.get<string>('JWT_SECRET'),
+        secret: this.configService.get<string>('jwt.secret') || 'default_secret',
         expiresIn: '1h',
       }),
       refresh_token: this.jwtService.sign(payload, {
-        secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
+        secret: this.configService.get<string>('jwt.refreshSecret') || 'default_refresh_secret',
         expiresIn: '7d',
       }),
       user: {
@@ -87,6 +84,7 @@ export class AuthService {
         username: user.username,
         email: user.email,
         role: user.role,
+        provider: user.provider,
       },
     };
   }
@@ -107,14 +105,15 @@ export class AuthService {
         username: result.username,
         email: result.email,
         role: result.role,
+        provider: result.provider,
       },
     };
   }
 
-  async refreshToken(token: string) {
+  async refreshToken(token: string): Promise<AuthResponse> {
     try {
       const payload = this.jwtService.verify(token, {
-        secret: process.env.JWT_REFRESH_SECRET,
+        secret: this.configService.get<string>('jwt.refreshSecret'),
       });
 
       const newPayload = {
@@ -123,32 +122,84 @@ export class AuthService {
         role: payload.role,
       };
 
+      // Get user info to include in the response
+      const user = await this.usersService.findById(payload.sub);
+      
       return {
         access_token: this.jwtService.sign(newPayload),
         refresh_token: this.jwtService.sign(newPayload, {
-          secret: process.env.JWT_REFRESH_SECRET,
+          secret: this.configService.get<string>('jwt.refreshSecret'),
           expiresIn: '7d',
         }),
+        user: {
+          id: user?._id?.toString() || payload.sub,
+          username: user?.username || '',
+          email: user?.email || payload.email,
+          role: user?.role || payload.role,
+          provider: user?.provider || 'local',
+        },
       };
     } catch (e) {
       throw new Error('Invalid refresh token');
     }
   }
 
-  async googleLogin(googleTokenData: any) {
-    // If googleTokenData contains a token, we need to verify it with Google
-    if (googleTokenData.token) {
-      // In a real implementation, you would verify the token with Google's API
-      // For now, we'll simulate getting user data from the token
-      const googleUser = await this.verifyGoogleToken(googleTokenData.token);
-      return this.processGoogleUser(googleUser);
-    } else {
-      // If googleTokenData is already a user object (for backward compatibility)
-      return this.processGoogleUser(googleTokenData);
+  async socialLogin(profile: any, provider: 'google' | 'facebook') {
+    let user = await this.usersService.findByEmail(profile.email);
+
+    if (!user) {
+      // Generate a username if not available from profile
+      let username = profile.name || profile.displayName;
+      if (!username) {
+        // Extract username from email if no display name is available
+        username = profile.email.split('@')[0];
+      }
+
+      // If we have first and last name, use them to create a more descriptive username
+      if (profile.firstName && profile.lastName) {
+        username = `${profile.firstName} ${profile.lastName}`;
+      } else if (profile.firstName) {
+        username = profile.firstName;
+      } else if (profile.lastName) {
+        username = profile.lastName;
+      }
+
+      user = await this.usersService.create({
+        username: username,
+        email: profile.email,
+        password: await HashUtil.hashPassword(Math.random().toString(36).slice(-8)), // Generate a random password for OAuth users
+        provider: provider,
+        providerId: profile.id,
+        role: 'user',
+      });
     }
+
+    const payload = {
+      sub: user._id?.toString(),
+      email: user.email,
+      role: user.role,
+    };
+
+    return {
+      access_token: this.jwtService.sign(payload, {
+        secret: this.configService.get<string>('jwt.secret') || 'default_secret',
+        expiresIn: '1h',
+      }),
+      refresh_token: this.jwtService.sign(payload, {
+        secret: this.configService.get<string>('jwt.refreshSecret') || 'default_refresh_secret',
+        expiresIn: '7d',
+      }),
+      user: {
+        id: user._id?.toString() || '',
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        provider: user.provider,
+      },
+    };
   }
 
-  private async verifyGoogleToken(token: string) {
+  async verifyGoogleToken(token: string) {
     // This is a placeholder implementation
     // In a real application, you would call Google's token verification API
     // For example: https://oauth2.googleapis.com/tokeninfo?id_token=token
@@ -169,87 +220,7 @@ export class AuthService {
     }
   }
 
-  private async processGoogleUser(googleUser: any) {
-    // Ensure we have the required data from Google profile
-    if (!googleUser.email) {
-      throw new UnauthorizedException('Google profile does not contain email');
-    }
-
-    let user = await this.usersService.findByEmail(googleUser.email);
-
-    // create user if not exists
-    if (!user) {
-      // Generate a username if not available from Google profile
-      let username = googleUser.name || googleUser.displayName;
-      if (!username) {
-        // Extract username from email if no display name is available
-        username = googleUser.email.split('@')[0];
-      }
-
-      // If we have first and last name, use them to create a more descriptive username
-      if (googleUser.firstName && googleUser.lastName) {
-        username = `${googleUser.firstName} ${googleUser.lastName}`;
-      } else if (googleUser.firstName) {
-        username = googleUser.firstName;
-      } else if (googleUser.lastName) {
-        username = googleUser.lastName;
-      }
-
-      const createdUser = await this.usersService.create({
-        username: username,
-        email: googleUser.email,
-        password: await this.hashPassword(Math.random().toString(36).slice(-8)), // Generate a random password for OAuth users
-        role: 'user',
-        googleId: googleUser.googleId || null,
-      });
-
-      // Convert the created user to a plain object to match the expected type
-      user = await this.usersService.findByEmail(googleUser.email);
-    }
-
-    // Check if user is still null after creation attempt
-    if (!user) {
-      throw new UnauthorizedException('Failed to create or retrieve user');
-    }
-
-    const payload = {
-      sub: user._id?.toString(),
-      email: user.email,
-      role: user.role,
-    };
-
-    return {
-      access_token: this.jwtService.sign(payload, {
-        secret: this.configService.get<string>('JWT_SECRET'),
-        expiresIn: '1h',
-      }),
-      refresh_token: this.jwtService.sign(payload, {
-        secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
-        expiresIn: '7d',
-      }),
-      user: {
-        id: user._id?.toString() || '',
-        username: user.username,
-        email: user.email,
-        role: user.role,
-      },
-    };
-  }
-
-  async facebookLogin(fbTokenData: any) {
-    // If fbTokenData contains an accessToken, we need to verify it with Facebook
-    if (fbTokenData.accessToken) {
-      // In a real implementation, you would verify the token with Facebook's API
-      // For now, we'll simulate getting user data from the token
-      const fbUser = await this.verifyFacebookToken(fbTokenData.accessToken);
-      return this.processFacebookUser(fbUser);
-    } else {
-      // If fbTokenData is already a user object (for backward compatibility)
-      return this.processFacebookUser(fbTokenData);
-    }
-  }
-
-  private async verifyFacebookToken(accessToken: string) {
+  async verifyFacebookToken(accessToken: string) {
     // This is a placeholder implementation
     // In a real application, you would call Facebook's token verification API
     // For example: https://graph.facebook.com/me?access_token=accessToken
@@ -266,45 +237,6 @@ export class AuthService {
     } catch (error) {
       throw new UnauthorizedException('Invalid Facebook token');
     }
-  }
-
-  private async processFacebookUser(fbUser: any) {
-    let user = await this.usersService.findByEmail(
-      fbUser.email,
-    );
-
-    if (!user) {
-      user = await this.usersService.create({
-        name: fbUser.name,
-        email: fbUser.email,
-        password: await this.hashPassword(Math.random().toString(36).slice(-8)), // Generate a random password for OAuth users
-        role: 'user',
-        facebookId: fbUser.facebookId,
-      });
-    }
-
-    const payload = {
-      sub: user._id?.toString(),
-      email: user.email,
-      role: user.role,
-    };
-
-    return {
-      access_token: this.jwtService.sign(payload, {
-        secret: this.configService.get<string>('JWT_SECRET'),
-        expiresIn: '1h',
-      }),
-      refresh_token: this.jwtService.sign(payload, {
-        secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
-        expiresIn: '7d',
-      }),
-      user: {
-        id: user._id?.toString() || '',
-        username: user.username,
-        email: user.email,
-        role: user.role,
-      },
-    };
   }
 
 }

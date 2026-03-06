@@ -13,17 +13,21 @@ export class User {
   @Prop({ required: true, unique: true })
   email: string;
 
-  @Prop({ required: true })
-  password: string;
+  @Prop()
+  password?: string;
 
-  @Prop({ default: 'user' })
+  @Prop({
+    type: String,
+    enum: ['admin', 'staff', 'user'],
+    default: 'user',
+  })
   role: string;
 
-  @Prop()
-  googleId: string;
+  @Prop({ required: true, enum: ['local', 'google', 'facebook'], default: 'local' })
+  provider: 'local' | 'google' | 'facebook';
 
   @Prop()
-  facebookId: string;
+  providerId?: string;
 
   @Prop()
   name?: string;

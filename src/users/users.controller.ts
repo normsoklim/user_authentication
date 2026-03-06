@@ -1,9 +1,9 @@
-import { Controller ,Body, Post,Get ,Param, UseGuards } from '@nestjs/common';
+import { Controller ,Body, Post,Get ,Param, UseGuards, Req } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { User } from './schemas/user.schema';
-import { CreateUserDto } from '../dto/create-user.dto';
-import { JwtAuthGuard } from '../auth/auth.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { CreateUserDto } from './dto/create-user.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { Roles } from '../common/decorators/roles.decorator';
 
 @Controller('users')
 export class UsersController {
@@ -21,8 +21,15 @@ export class UsersController {
         return this.usersService.findAll();
     }
 
-   /*  @Get(':id')
-    async findOne(@Param('id') id: string): Promise<User> {
+    @Get(':id')
+    @UseGuards(JwtAuthGuard)
+    async findOne(@Param('id') id: string): Promise<User | null> {
         return this.usersService.findById(id);
-    } */
+    }
+    
+    @Get('profile/me')
+    @UseGuards(JwtAuthGuard)
+    getProfile(@Req() req) {
+      return req.user;
+    }
 }

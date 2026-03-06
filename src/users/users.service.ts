@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { User, UserDocument } from './schemas/user.schema';
 import { Model } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
+import { HashUtil } from '../utils/hash.util';
 
 @Injectable()
 export class UsersService {
@@ -9,6 +10,11 @@ export class UsersService {
         @InjectModel(User.name) private userModel: Model<UserDocument>
     ) { }
     async create(createUserDto: Partial<User>): Promise<User> {
+        // Set default provider to 'local' if not provided
+        if (!createUserDto.provider) {
+            createUserDto.provider = 'local';
+        }
+        
         const createdUser = new this.userModel(createUserDto);
         const savedUser = await createdUser.save();
         return savedUser.toObject() as User;

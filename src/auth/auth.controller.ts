@@ -1,14 +1,22 @@
 import { Controller, Post, Body, Get, UseGuards, Req, Request } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { RegisterDto } from '../dto/register.dto';
-import { LoginDto } from '../dto/login.dto';
-import { AuthResponseDto } from '../dto/auth-response.dto';
-import { JwtAuthGuard } from './auth.guard';
+import { GoogleService } from './social/google.service';
+import { FacebookService } from './social/facebook.service';
+import { RegisterDto } from './dto/register.dto';
+import { LoginDto } from './dto/login.dto';
+import { AuthResponseDto } from './dto/auth-response.dto';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { AuthGuard } from '@nestjs/passport';
+import { Roles } from '../common/decorators/roles.decorator';
+import { RolesGuard } from '../common/guards/roles.guard';
 
 @Controller('auth')
 export class AuthController {
-    constructor(private readonly authService: AuthService) { }
+    constructor(
+        private readonly authService: AuthService,
+        private readonly googleService: GoogleService,
+        private readonly facebookService: FacebookService,
+    ) { }
 
     @Post('register')
     async register(@Body() registerDto: RegisterDto): Promise<{ message: string, data: Omit<RegisterDto, 'password'> }> {
@@ -38,9 +46,35 @@ export class AuthController {
     @Get('google/callback')
     @UseGuards(AuthGuard('google'))
     googleAuthRedirect(@Req() req) {
-        return this.authService.googleLogin(req.user);
+        return this.googleService.validateGoogleLogin(req.user);
     }
 
+    @Post('google')
+    async googleLogin(@Body('token') token: string) {
+      const profile = await this.authService.verifyGoogleToken(token);
+      return this.authService.socialLogin(
+        {
+          id: profile.googleId,
+          email: profile.email,
+          name: profile.name,
+        },
+        'google',
+      );
+    }
+
+    @Post('facebook')
+    async facebookLoginPost(@Body('token') token: string) {
+      const profile = await this.authService.verifyFacebookToken(token);
+      return this.authService.socialLogin(
+        {
+          id: profile.facebookId,
+          email: profile.email,
+          name: profile.name,
+        },
+        'facebook',
+      );
+    }
+    
     @Get('facebook')
     @UseGuards(AuthGuard('facebook'))
     facebookLogin() { }
@@ -48,5 +82,20 @@ export class AuthController {
     @Get('facebook/callback')
     @UseGuards(AuthGuard('facebook'))
     facebookAuthRedirect(@Req() req) {
-        return this.authService.facebookLogin(req.user);
-    }}
+        return this.facebookService.validateFacebookLogin(req.user);
+    }
+    
+    @Get('admin-dashboard')
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles('admin')
+    getAdminDashboard() {
+      return 'Admin only data';
+    }
+    
+    @Get('orders')
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles('admin', 'staff')
+    getOrders() {
+      return 'Staff and admin can access';
+    }
+}

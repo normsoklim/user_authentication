@@ -1,3 +1,4 @@
+
 import { ApiProperty } from '@nestjs/swagger';
 
 export class RegisterDto {
@@ -27,4 +28,10 @@ export class RegisterDto {
         required: false
     })
     googleId?: string;
+
+    @ApiProperty({
+        example: '123456789',
+        required: false
+    })
+    facebookId?: string;
 }
