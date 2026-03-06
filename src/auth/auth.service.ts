@@ -9,6 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { MailService } from '../mail/mail.service';
 import { v4 as uuidv4 } from 'uuid';
 
+
 export interface AuthResponse {
   access_token: string;
   refresh_token: string;
@@ -276,6 +277,56 @@ export class AuthService {
     } catch (error) {
       throw new UnauthorizedException('Invalid Facebook token');
     }
+  }
+
+  async forgotPassword(email: string) {
+    const user = await this.usersService.findByEmail(email);
+
+    if (!user || !user._id) {
+      return { message: "If this email exists, a reset link was sent." };
+    }
+
+    const token = uuidv4();
+
+    await this.usersService.update(user._id.toString(), {
+      resetPasswordToken: token,
+      resetPasswordExpires: new Date(Date.now() + 3600000), // 1 hour
+    });
+
+    // Send reset password email (handle errors gracefully)
+    try {
+      await this.mailService.sendResetPasswordEmail(user.email, token);
+    } catch (error) {
+      console.error('Failed to send reset password email:', error);
+      // Don't throw error - the token is still valid, user can use the token from logs if needed
+    }
+
+    return {
+      message: 'Password reset email sent',
+    };
+  }
+
+  async resetPassword(token: string, newPassword: string) {
+    const user = await this.usersService.findOne({
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: new Date() },
+    });
+
+    if (!user || !user._id) {
+      throw new BadRequestException('Invalid or expired token');
+    }
+
+    const hashed = await HashUtil.hashPassword(newPassword);
+
+    await this.usersService.update(user._id.toString(), {
+      password: hashed,
+      resetPasswordToken: undefined,
+      resetPasswordExpires: undefined,
+    });
+
+    return {
+      message: 'Password successfully reset',
+    };
   }
 
 }
