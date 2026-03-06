@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException, BadRequestException } from '@nestjs/common';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { UsersService } from '../users/users.service';
@@ -6,6 +6,8 @@ import { User } from '../users/schemas/user.schema';
 import { HashUtil } from '../utils/hash.util';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { MailService } from '../mail/mail.service';
+import { v4 as uuidv4 } from 'uuid';
 
 export interface AuthResponse {
   access_token: string;
@@ -25,6 +27,7 @@ export class AuthService {
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly mailService: MailService,
   ) { }
 
   async validateUser(email: string, password: string): Promise<any> {
@@ -42,15 +45,26 @@ export class AuthService {
       throw new ConflictException('User with this email already exists');
     }
 
+    const verificationToken = uuidv4();
     const hashedPassword = await HashUtil.hashPassword(registerDto.password);
     const user = await this.usersService.create({
       ...registerDto,
       password: hashedPassword,
       provider: 'local',
+      isEmailVerified: false,
+      emailVerificationToken: verificationToken,
     });
 
+    // Send verification email (handle errors gracefully)
+    try {
+      await this.mailService.sendVerificationEmail(user.email, verificationToken);
+    } catch (error) {
+      console.error('Failed to send verification email:', error);
+      // Don't throw error - user should still be registered even if email fails
+    }
+
     return {
-      message: 'User registered successfully',
+      message: 'Registration successful. Please verify your email.',
       data: {
         username: user.username,
         email: user.email,
@@ -62,6 +76,11 @@ export class AuthService {
     const user = await this.validateUser(loginDto.email, loginDto.password);
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // Check if email is verified
+    if (!user.isEmailVerified) {
+      throw new UnauthorizedException('Please verify your email first');
     }
 
     const payload = {
@@ -218,6 +237,26 @@ export class AuthService {
     } catch (error) {
       throw new UnauthorizedException('Invalid Google token');
     }
+  }
+
+  async verifyEmail(token: string) {
+    const user = await this.usersService.findByEmailVerificationToken(token);
+
+    if (!user) {
+      throw new BadRequestException('Invalid token');
+    }
+
+    // Update user to mark email as verified
+    if (user._id) {
+      await this.usersService.update(user._id.toString(), {
+        isEmailVerified: true,
+        emailVerificationToken: undefined,
+      });
+    }
+
+    return {
+      message: 'Email verified successfully',
+    };
   }
 
   async verifyFacebookToken(accessToken: string) {

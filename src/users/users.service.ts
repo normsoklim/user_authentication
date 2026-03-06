@@ -31,7 +31,22 @@ export class UsersService {
     }
     
     async findById(id: string): Promise<User | null> {
-        const user = await this.userModel.findById(id);
-        return user ? user.toObject() as User : null;
+      const user = await this.userModel.findById(id);
+      return user ? user.toObject() as User : null;
     }
-}
+    
+    async findOne(filter: any): Promise<User | null> {
+      const user = await this.userModel.findOne(filter);
+      return user ? user.toObject() as User : null;
+    }
+    
+    async update(id: string, updateData: Partial<User>): Promise<User | null> {
+      const updatedUser = await this.userModel.findByIdAndUpdate(id, updateData, { new: true });
+      return updatedUser ? updatedUser.toObject() as User : null;
+    }
+    
+    async findByEmailVerificationToken(token: string): Promise<User | null> {
+      const user = await this.userModel.findOne({ emailVerificationToken: token });
+      return user ? user.toObject() as User : null;
+    }
+  }

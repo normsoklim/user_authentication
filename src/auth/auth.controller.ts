@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get, UseGuards, Req, Request } from '@nestjs/common';
+import { Controller, Post, Body, Get, UseGuards, Req, Request, Query } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { GoogleService } from './social/google.service';
 import { FacebookService } from './social/facebook.service';
@@ -9,6 +9,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { AuthGuard } from '@nestjs/passport';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { Public } from './decorators/public.decorator';
 
 @Controller('auth')
 export class AuthController {
@@ -98,4 +99,9 @@ export class AuthController {
     getOrders() {
       return 'Staff and admin can access';
     }
+  @Get('verify-email')
+  @Public()
+  async verifyEmail(@Query('token') token: string) {
+    return this.authService.verifyEmail(token);
+  }
 }

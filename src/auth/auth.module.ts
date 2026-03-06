@@ -4,6 +4,7 @@ import { GoogleService } from './social/google.service';
 import { FacebookService } from './social/facebook.service';
 import { AuthController } from './auth.controller';
 import { UsersModule } from '../users/users.module';
+import { MailModule } from '../mail/mail.module';
 import { JwtModule } from '@nestjs/jwt';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { PassportModule } from '@nestjs/passport';
@@ -16,6 +17,7 @@ import { FacebookStrategy } from './strategies/facebook.strategy/facebook.strate
     UsersModule,
     ConfigModule,
     PassportModule,
+    MailModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
