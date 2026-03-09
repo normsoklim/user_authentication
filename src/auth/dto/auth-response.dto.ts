@@ -1,5 +1,3 @@
-
-
 export class AuthResponseDto {
   user: {
     id: string;

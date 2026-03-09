@@ -11,10 +11,7 @@ export class GoogleService {
   ) {}
 
   async validateGoogleLogin(googleTokenData: any) {
-    // If googleTokenData contains a token, we need to verify it with Google
     if (googleTokenData.token) {
-      // In a real implementation, you would verify the token with Google's API
-      // For now, we'll simulate getting user data from the token
       const googleUser = await this.authService.verifyGoogleToken(googleTokenData.token);
       return this.authService.socialLogin({
         id: googleUser.googleId,

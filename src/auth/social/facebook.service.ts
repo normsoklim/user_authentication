@@ -11,23 +11,27 @@ export class FacebookService {
   ) {}
 
   async validateFacebookLogin(fbTokenData: any) {
-    // If fbTokenData contains an accessToken, we need to verify it with Facebook
     if (fbTokenData.accessToken) {
-      // In a real implementation, you would verify the token with Facebook's API
-      // For now, we'll simulate getting user data from the token
-      const fbUser = await this.authService.verifyFacebookToken(fbTokenData.accessToken);
-      return this.authService.socialLogin({
-        id: fbUser.facebookId,
-        email: fbUser.email,
-        name: fbUser.name,
-      }, 'facebook');
+      const fbUser = await this.authService.verifyFacebookToken(
+        fbTokenData.accessToken,
+      );
+      return this.authService.socialLogin(
+        {
+          id: fbUser.facebookId,
+          email: fbUser.email,
+          name: fbUser.name,
+        },
+        'facebook',
+      );
     } else {
-      // If fbTokenData is already a user object (for backward compatibility)
-      return this.authService.socialLogin({
-        id: fbTokenData.facebookId,
-        email: fbTokenData.email,
-        name: fbTokenData.name,
-      }, 'facebook');
+      return this.authService.socialLogin(
+        {
+          id: fbTokenData.facebookId,
+          email: fbTokenData.email,
+          name: fbTokenData.name,
+        },
+        'facebook',
+      );
     }
   }
 }

@@ -220,12 +220,9 @@ export class AuthService {
   }
 
   async verifyGoogleToken(token: string) {
-    // This is a placeholder implementation
-    // In a real application, you would call Google's token verification API
-    // For example: https://oauth2.googleapis.com/tokeninfo?id_token=token
-    // For now, we'll simulate a successful verification
+   
     try {
-      // In a real implementation, you would decode and verify the JWT token
+     // In a real implementation, you would decode and verify the JWT token
       // For this example, we'll return a mock user object
       // You should replace this with actual Google token verification
       return {
